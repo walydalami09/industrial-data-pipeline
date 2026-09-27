@@ -44,13 +44,35 @@ valid_measurements = df.filter(
     F.col("temperature").isNotNull()
 )
 
+# ============================================================
+# 4. ENRICHISSEMENT AVEC LE RÉFÉRENTIEL DES ÉQUIPEMENTS
+# ============================================================
+
+# Charger le référentiel des équipements.
+df_equipment = (
+    spark.read
+    .option("header", True)
+    .option("inferSchema", True)
+    .csv("data/equipment.csv")
+)
+
+# Effectuer une jointure LEFT sur equipment_id.
+df_enriched = valid_measurements.join(
+    df_equipment,
+    on="equipment_id",
+    how="left"
+)
+
+print("\nMesures enrichies :")
+df_enriched.show()
+
 
 # ============================================================
-# 4. AGRÉGATION DES MESURES PAR SITE
+# 5. AGRÉGATION DES MESURES PAR SITE
 # ============================================================
 
 # Calculer plusieurs indicateurs pour chaque site industriel.
-site_report = valid_measurements.groupBy("site").agg(
+site_report = df_enriched.groupBy("site").agg(
     F.count("*").alias("nb_measurements"),
     F.avg("temperature").alias("average_temperature"),
     F.max("temperature").alias("max_temperature")
@@ -61,7 +83,7 @@ site_report.show()
 
 
 # ============================================================
-# 5. EXPORT DU RAPPORT AU FORMAT PARQUET
+# 6. EXPORT DU RAPPORT AU FORMAT PARQUET
 # ============================================================
 
 # Spark écrit les résultats dans un dossier contenant
@@ -72,9 +94,43 @@ site_report.write.mode("overwrite").parquet(
 
 print("\nExport Parquet terminé.")
 
+# Afficher le nombre de partitions du DataFrame.
+print("Partitions :", site_report.rdd.getNumPartitions())
+
+# Afficher le plan d'exécution physique et logique.
+site_report.explain(True)
+
+
 
 # ============================================================
-# 6. ARRÊT DE SPARK
+# 7. ENRICHISSEMENT DU RAPPORT AVEC LA MÉTÉO
+# ============================================================
+
+# Lire les données météo générées par notre script API.
+df_weather = spark.read.parquet("data/weather.parquet")
+
+print("\nDonnées météo :")
+df_weather.show()
+
+# Enrichir le rapport industriel avec la température extérieure.
+final_report = site_report.join(
+    df_weather,
+    site_report["site"] == df_weather["city"],
+    how="left"
+)
+
+print("\nRapport industriel enrichi avec la météo :")
+final_report.show()
+
+final_report.write.mode("overwrite").parquet(
+    "data/final_industrial_report"
+)
+
+print("\nRapport industriel final exporté.")
+
+
+# ============================================================
+# 8. ARRÊT DE SPARK
 # ============================================================
 
 # Libérer les ressources utilisées par la session Spark.
