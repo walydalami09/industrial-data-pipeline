@@ -1,0 +1,10 @@
+[
+    {
+        "equipment_id": "EQ001",
+        "site": "Toulouse",
+        "equipment_type": "Sensor",
+        "temperature": "N/A",
+        "status": "OK",
+        "rejection_reason": "Invalid temperature"
+    }
+]

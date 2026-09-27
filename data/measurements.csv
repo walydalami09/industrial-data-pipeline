@@ -4,3 +4,4 @@ EQ002,Bordeaux,Motor,91.8,WARNING
 EQ003,Toulouse,Sensor,68.1,OK
 EQ004,Bordeaux,Motor,87.3,OK
 EQ005,Paris,Sensor,95.2,ERROR
+EQ999,Lyon,Sensor,75.0,OK
