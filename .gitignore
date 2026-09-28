@@ -1,6 +1,15 @@
-.venv/
-__pycache__/
-*.pyc
-.DS_Store
+# Environment
 .env
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# Generated data
+data/lake/
 data/processed/
+
+# Trained ML models
+models/

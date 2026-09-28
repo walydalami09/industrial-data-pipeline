@@ -28,14 +28,26 @@ OUTPUT_PATH = (
 # ============================================================
 
 SITE_REPORT_QUERY = text("""
+    WITH site_stats AS (
+        SELECT
+            site,
+            COUNT(*) AS nb_measurements,
+            AVG(temperature) AS average_temperature,
+            MAX(temperature) AS max_temperature
+        FROM measurements
+        WHERE temperature IS NOT NULL
+        GROUP BY site
+    )
+
     SELECT
         site,
-        COUNT(*) AS nb_measurements,
-        AVG(temperature) AS average_temperature,
-        MAX(temperature) AS max_temperature
-    FROM measurements
-    WHERE temperature IS NOT NULL
-    GROUP BY site
+        nb_measurements,
+        average_temperature,
+        max_temperature,
+        DENSE_RANK() OVER (
+            ORDER BY average_temperature DESC
+        ) AS temperature_rank
+    FROM site_stats
 """)
 
 

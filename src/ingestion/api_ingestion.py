@@ -1,21 +1,61 @@
 """Ingestion des données météorologiques des sites industriels."""
 
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Iterator
 
 import pandas as pd
 import requests
 
 
-# Configuration du projet
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-OUTPUT_PATH = PROJECT_ROOT / "data" / "processed" / "weather.parquet"
+BRONZE_WEATHER_PATH = (
+    PROJECT_ROOT
+    / "data"
+    / "lake"
+    / "bronze"
+    / "weather.parquet"
+)
 
-WEATHER_SITES = {
-    "Toulouse": (43.6047, 1.4442),
-    "Bordeaux": (44.8378, -0.5792),
-    "Paris": (48.8566, 2.3522),
-}
+# ============================================================
+# DATA MODEL
+# ============================================================
 
+@dataclass(frozen=True)
+class WeatherSite:
+    """Représente un site industriel avec ses coordonnées."""
+
+    city: str
+    latitude: float
+    longitude: float
+
+
+WEATHER_SITES = [
+    WeatherSite(
+        city="Toulouse",
+        latitude=43.6047,
+        longitude=1.4442,
+    ),
+    WeatherSite(
+        city="Bordeaux",
+        latitude=44.8378,
+        longitude=-0.5792,
+    ),
+    WeatherSite(
+        city="Paris",
+        latitude=48.8566,
+        longitude=2.3522,
+    ),
+]
+
+
+# ============================================================
+# API CLIENT
+# ============================================================
 
 class WeatherClient:
     """Client HTTP pour récupérer les températures depuis Open-Meteo."""
@@ -44,6 +84,7 @@ class WeatherClient:
             params=params,
             timeout=self.timeout,
         )
+
         response.raise_for_status()
 
         current = response.json()["current"]
@@ -55,22 +96,56 @@ class WeatherClient:
         }
 
 
-def collect_weather(client: WeatherClient) -> pd.DataFrame:
-    """Collecte les données météorologiques des sites configurés."""
+# ============================================================
+# GENERATOR
+# ============================================================
 
-    weather_reports = []
+def fetch_weather_reports(
+    client: WeatherClient,
+) -> Iterator[dict]:
+    """
+    Génère les rapports météo un par un.
 
-    for city, (latitude, longitude) in WEATHER_SITES.items():
-        weather = client.get_weather(city, latitude, longitude)
-        weather_reports.append(weather)
+    L'utilisation de yield évite de construire une liste
+    intermédiaire contenant tous les résultats.
+    """
+
+    for site in WEATHER_SITES:
+        yield client.get_weather(
+            city=site.city,
+            latitude=site.latitude,
+            longitude=site.longitude,
+        )
+
+
+# ============================================================
+# COLLECTION
+# ============================================================
+
+def collect_weather(
+    client: WeatherClient,
+) -> pd.DataFrame:
+    """Collecte les rapports météo dans un DataFrame pandas."""
+
+    weather_reports = fetch_weather_reports(client)
 
     return pd.DataFrame(weather_reports)
 
 
-def save_weather(df: pd.DataFrame, output_path: Path) -> None:
+# ============================================================
+# EXPORT
+# ============================================================
+
+def save_weather(
+    df: pd.DataFrame,
+    output_path: Path,
+) -> None:
     """Enregistre les données météorologiques au format Parquet."""
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
 
     df.to_parquet(
         output_path,
@@ -78,6 +153,10 @@ def save_weather(df: pd.DataFrame, output_path: Path) -> None:
         index=False,
     )
 
+
+# ============================================================
+# PIPELINE
+# ============================================================
 
 def main() -> None:
     """Exécute le pipeline d'ingestion météorologique."""
@@ -89,9 +168,14 @@ def main() -> None:
     print("\nDonnées météorologiques :")
     print(df_weather)
 
-    save_weather(df_weather, OUTPUT_PATH)
+    save_weather(
+    df_weather,
+    BRONZE_WEATHER_PATH,
+    )
 
-    print(f"\nExport Parquet terminé : {OUTPUT_PATH}")
+    print(
+    f"\nExport Bronze terminé : {BRONZE_WEATHER_PATH}"
+    )
 
 
 if __name__ == "__main__":
