@@ -1,65 +1,82 @@
+"""Gestion de la connexion à SQL Server."""
+
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL
+from sqlalchemy.engine import Engine, URL
 
 
-# ============================================================
-# 1. CONFIGURATION DE LA CONNEXION
-# ============================================================
-
-connection_url = URL.create(
-    "mssql+pyodbc",
-    host=r".\SQLEXPRESS",
-    database="industrial_data",
-    query={
-        "driver": "ODBC Driver 17 for SQL Server",
-        "Trusted_Connection": "yes",
-        "TrustServerCertificate": "yes"
-    }
-)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+load_dotenv(PROJECT_ROOT / ".env")
 
 
-# ============================================================
-# 2. CRÉATION DU MOTEUR SQLALCHEMY
-# ============================================================
+class DatabaseManager:
+    """Gère la connexion à la base SQL Server."""
 
-engine = create_engine(connection_url)
+    def __init__(self) -> None:
+        self.host = self._get_env_variable("DB_HOST")
+        self.port = int(self._get_env_variable("DB_PORT"))
+        self.database = self._get_env_variable("DB_NAME")
+        self.username = self._get_env_variable("DB_USER")
+        self.password = self._get_env_variable("DB_PASSWORD")
+        self.driver = self._get_env_variable("DB_DRIVER")
 
+        self.engine = self._create_engine()
 
-# ============================================================
-# 3. TEST DE LA CONNEXION
-# ============================================================
+    @staticmethod
+    def _get_env_variable(name: str) -> str:
+        """Récupère une variable d'environnement obligatoire."""
 
-# Ce bloc s'exécute uniquement lorsque database.py est lancé directement.
-# Il ne s'exécute pas lorsqu'un autre fichier importe engine.
+        value = os.getenv(name)
 
-if __name__ == "__main__":
+        if not value:
+            raise ValueError(
+                f"La variable d'environnement {name} est manquante."
+            )
 
-    with engine.connect() as connection:
+        return value
 
-        result = connection.execute(
-            text("SELECT @@VERSION")
+    def _create_engine(self) -> Engine:
+        """Crée le moteur SQLAlchemy."""
+
+        connection_url = URL.create(
+            "mssql+pyodbc",
+            username=self.username,
+            password=self.password,
+            host=self.host,
+            port=self.port,
+            database=self.database,
+            query={
+                "driver": self.driver,
+                "TrustServerCertificate": "yes",
+            },
         )
 
-        print(result.scalar())
+        return create_engine(connection_url)
+
+    def test_connection(self) -> str:
+        """Teste la connexion et retourne la version de SQL Server."""
+
+        with self.engine.connect() as connection:
+            result = connection.execute(
+                text("SELECT @@VERSION")
+            )
+
+            return result.scalar_one()
 
 
-# ============================================================
-# 4. CRÉATION DE LA BASE INDUSTRIELLE — ARCHIVE
-# ============================================================
+def main() -> None:
+    """Teste la connexion à SQL Server."""
 
-# Ce bloc a servi à créer la base industrial_data.
-# Il est conservé comme note, mais n'est plus exécuté.
+    database = DatabaseManager()
 
-# IMPORTANT : pour réutiliser ce bloc, il faut un moteur connecté
-# à la base master, car industrial_data pourrait ne pas encore exister.
+    version = database.test_connection()
 
-# with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+    print("Connexion SQL Server réussie.")
+    print(version)
 
-#     connection.execute(
-#         text("""
-#             IF DB_ID('industrial_data') IS NULL
-#                 CREATE DATABASE industrial_data
-#         """)
-#     )
 
-# print("Base industrial_data prête.")
+if __name__ == "__main__":
+    main()

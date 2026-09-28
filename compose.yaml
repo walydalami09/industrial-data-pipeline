@@ -1,0 +1,11 @@
+services:
+
+  pipeline:
+    build: .
+    image: industrial-data-pipeline
+
+    env_file:
+      - .env
+
+    volumes:
+      - ./data:/app/data

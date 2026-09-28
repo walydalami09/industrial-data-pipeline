@@ -1,16 +1,22 @@
 from datetime import datetime, timezone
 from pathlib import Path
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 from airflow.sdk import dag, task
 
 
-# Dossier contenant notre projet industriel.
-PROJECT_DIR = Path("/home/walyd/Dev/python-data-project_1")
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
-# Python de notre environnement virtuel PySpark.
+PROJECT_DIR = Path("/home/walyd/Dev/python-data-project_1")
 PROJECT_PYTHON = PROJECT_DIR / ".venv/bin/python"
 
+
+# ============================================================
+# DAG
+# ============================================================
 
 @dag(
     dag_id="industrial_data_pipeline",
@@ -18,31 +24,74 @@ PROJECT_PYTHON = PROJECT_DIR / ".venv/bin/python"
     schedule=None,
     catchup=False,
     tags=["data-engineering", "industrial"],
+     default_args={
+        "retries": 2,
+        "retry_delay": timedelta(seconds=30),
+    },
 )
 def industrial_pipeline():
 
     @task
-    def ingest_weather():
-        """Récupérer les données météo depuis l'API."""
+    def load_to_sql() -> None:
+        """Charge les données CSV dans SQL Server."""
 
         subprocess.run(
-            [str(PROJECT_PYTHON), "src/api_ingestion.py"],
+            [
+                str(PROJECT_PYTHON),
+                "src/database/load_to_sql.py",
+            ],
             cwd=PROJECT_DIR,
             check=True,
         )
 
     @task
-    def process_industrial_data():
-        """Exécuter le pipeline PySpark."""
+    def read_from_sql() -> None:
+        """Extrait les données SQL Server vers Parquet."""
 
         subprocess.run(
-            [str(PROJECT_PYTHON), "src/spark_pipeline.py"],
+            [
+                str(PROJECT_PYTHON),
+                "src/database/read_from_sql.py",
+            ],
             cwd=PROJECT_DIR,
             check=True,
         )
 
-    # La deuxième tâche attend la réussite de la première.
-    ingest_weather() >> process_industrial_data()
+    @task
+    def ingest_weather() -> None:
+        """Récupère les données météorologiques depuis l'API."""
+
+        subprocess.run(
+            [
+                str(PROJECT_PYTHON),
+                "src/ingestion/api_ingestion.py",
+            ],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+
+    @task
+    def process_industrial_data() -> None:
+        """Exécute le traitement PySpark final."""
+
+        subprocess.run(
+            [
+                str(PROJECT_PYTHON),
+                "src/processing/spark_pipeline.py",
+            ],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+
+    # Création des tâches
+    sql_load = load_to_sql()
+    sql_extract = read_from_sql()
+    weather = ingest_weather()
+    spark = process_industrial_data()
+
+    # Dépendances
+    sql_load >> sql_extract
+    [sql_extract, weather] >> spark
 
 
 industrial_pipeline()

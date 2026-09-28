@@ -1,53 +1,77 @@
+"""Chargement des données industrielles dans SQL Server."""
+
+from pathlib import Path
+
 import pandas as pd
-from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
-# Récupérer le moteur de connexion défini dans database.py.
-from database import engine
-
-
-# ============================================================
-# 1. CHARGEMENT DES FICHIERS CSV
-# ============================================================
-
-# Charger les mesures industrielles dans un DataFrame.
-df_measurements = pd.read_csv("data/measurements.csv")
-
-# Charger le référentiel des équipements dans un DataFrame.
-df_equipment = pd.read_csv("data/equipment.csv")
+from database import DatabaseManager
 
 
-# ============================================================
-# 2. CHARGEMENT DES DATAFRAMES DANS SQL SERVER
-# ============================================================
+# Configuration des chemins du projet
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "data" / "raw"
 
-# Créer la table measurements et y insérer les données.
-df_measurements.to_sql(
-    "measurements",
-    engine,
-    if_exists="replace",
-    index=False
-)
-
-# Créer la table equipment et y insérer les données.
-df_equipment.to_sql(
-    "equipment",
-    engine,
-    if_exists="replace",
-    index=False
-)
-
-print("Chargement SQL Server terminé.")
+MEASUREMENTS_PATH = DATA_DIR / "measurements.csv"
+EQUIPMENT_PATH = DATA_DIR / "equipment.csv"
 
 
-# ============================================================
-# 3. VÉRIFICATION DU CHARGEMENT
-# ============================================================
+def load_csv(file_path: Path) -> pd.DataFrame:
+    """Charge un fichier CSV dans un DataFrame pandas."""
 
-# Exécuter une requête SQL pour compter les mesures enregistrées.
-with engine.connect() as connection:
+    return pd.read_csv(file_path)
 
-    result = connection.execute(
-        text("SELECT COUNT(*) FROM measurements")
+
+def load_dataframe_to_sql(
+    df: pd.DataFrame,
+    table_name: str,
+    engine: Engine,
+) -> None:
+    """Charge un DataFrame dans une table SQL Server."""
+
+    df.to_sql(
+        name=table_name,
+        con=engine,
+        if_exists="replace",
+        index=False,
     )
 
-    print("Nombre de mesures en base :", result.scalar())
+
+def main() -> None:
+    """Charge les données industrielles dans SQL Server."""
+
+    # Connexion à SQL Server
+    database = DatabaseManager()
+
+    # Lecture des fichiers sources
+    df_measurements = load_csv(MEASUREMENTS_PATH)
+    df_equipment = load_csv(EQUIPMENT_PATH)
+
+    # Chargement dans SQL Server
+    load_dataframe_to_sql(
+        df_measurements,
+        "measurements",
+        database.engine,
+    )
+
+    load_dataframe_to_sql(
+        df_equipment,
+        "equipment",
+        database.engine,
+    )
+
+    print("Chargement SQL Server terminé.")
+
+    # Vérification
+    with database.engine.connect() as connection:
+        result = connection.exec_driver_sql(
+            "SELECT COUNT(*) FROM measurements"
+        )
+
+        count = result.scalar_one()
+
+    print(f"Nombre de mesures en base : {count}")
+
+
+if __name__ == "__main__":
+    main()
